@@ -31,17 +31,30 @@ def packet_callback(packet):
     else:
       traffic_log[src_ip][0] += 1
       if traffic_log[src_ip][0] > PACKET_LIMIT:
+        packet_count = traffic_log[src_ip][0]
+
+        if packet_count > 70:
+          severity = "CRITICAL"
+          message = f"Critical traffic spike detected ({packet_count} packets in {TIME_WINDOW}s)"
+        elif packet_count > 45:
+          severity = "HIGH"
+          message = f"High traffic volume detected ({packet_count} packets in {TIME_WINDOW}s)"
+        else:
+          severity = "MEDIUM"
+          message = f"Moderate traffic surge detected ({packet_count} packets in {TIME_WINDOW}s)"
+
         alert_msg = {
             "source": src_ip,
             "destination": dst_ip,
-            "count": traffic_log[src_ip][0],
-            "message": f"High traffic volume detected ({traffic_log[src_ip][0]} packets in {TIME_WINDOW}s)",
+            "count": packet_count,
+            "message": message,
+            "severity": severity,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
         # Avoid duplicating identical rapid alerts
         if not alerts_log or alerts_log[-1]["source"] != src_ip:
           alerts_log.append(alert_msg)
-          print(f"[!] ALERT LOGGED: {src_ip}")
+          print(f"[!] ALERT LOGGED: {src_ip} ({severity})")
 
 
 def start_sniffer():
