@@ -4,9 +4,12 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 function App() {
   const [alerts, setAlerts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isPaused, setIsPaused] = useState(false);
 
-  // Fetch alerts from Flask backend every 2 seconds
+  // Fetch alerts from Flask backend every 2 seconds (unless paused)
   useEffect(() => {
+    if (isPaused) return;
+
     const fetchAlerts = () => {
       fetch('http://localhost:5000/api/alerts')
         .then(res => res.json())
@@ -17,7 +20,7 @@ function App() {
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isPaused]);
 
   // Export logs utility function
   const exportLogs = () => {
@@ -36,9 +39,14 @@ function App() {
     alert.severity.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Format data for Recharts (showing chronological traffic volume)
-  const chartData = [...alerts].reverse().map((alert, index) => ({
-    name: alert.timestamp.split(' ')[1], // Time string
+  // Calculate KPI metrics
+  const criticalCount = alerts.filter(a => a.severity === 'CRITICAL').length;
+  const highCount = alerts.filter(a => a.severity === 'HIGH').length;
+  const mediumCount = alerts.filter(a => a.severity === 'MEDIUM').length;
+
+  // Format data for Recharts
+  const chartData = [...alerts].reverse().map((alert) => ({
+    name: alert.timestamp.split(' ')[1],
     packets: alert.count,
     severity: alert.severity
   }));
@@ -53,7 +61,23 @@ function App() {
           <p style={{ color: '#94a3b8' }}>Real-time SOC anomaly monitoring dashboard</p>
         </div>
 
-        {/* Top Action Bar: Export & Search */}
+        {/* Executive KPI Summary Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+          <div style={{ backgroundColor: '#1e293b', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #38bdf8' }}>
+            <p style={{ margin: '0 0 5px 0', color: '#94a3b8', fontSize: '13px' }}>Total Captured Logs</p>
+            <h2 style={{ margin: '0', color: '#f8fafc' }}>{alerts.length}</h2>
+          </div>
+          <div style={{ backgroundColor: '#1e293b', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #dc2626' }}>
+            <p style={{ margin: '0 0 5px 0', color: '#94a3b8', fontSize: '13px' }}>Critical Threats</p>
+            <h2 style={{ margin: '0', color: '#dc2626' }}>{criticalCount}</h2>
+          </div>
+          <div style={{ backgroundColor: '#1e293b', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #f97316' }}>
+            <p style={{ margin: '0 0 5px 0', color: '#94a3b8', fontSize: '13px' }}>High / Medium Surges</p>
+            <h2 style={{ margin: '0', color: '#f97316' }}>{highCount + mediumCount}</h2>
+          </div>
+        </div>
+
+        {/* Action Bar: Search, Pause Toggle, Export */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '10px', flexWrap: 'wrap' }}>
           <input 
             type="text" 
@@ -67,23 +91,39 @@ function App() {
               backgroundColor: '#1e293b',
               color: '#fff',
               flex: '1',
-              minWidth: '250px'
+              minWidth: '220px'
             }}
           />
-          <button 
-            onClick={exportLogs}
-            style={{
-              backgroundColor: '#2563eb',
-              color: '#fff',
-              border: 'none',
-              padding: '10px 16px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            📥 Export Logs ({alerts.length})
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button 
+              onClick={() => setIsPaused(!isPaused)}
+              style={{
+                backgroundColor: isPaused ? '#16a34a' : '#ca8a04',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              {isPaused ? '▶ Resume Feed' : '⏸ Pause Feed'}
+            </button>
+            <button 
+              onClick={exportLogs}
+              style={{
+                backgroundColor: '#2563eb',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              📥 Export Logs
+            </button>
+          </div>
         </div>
 
         {/* Live Traffic Volume Chart */}
