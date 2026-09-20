@@ -1,102 +1,96 @@
-from collections import defaultdict
-import threading
-import time
 from flask import Flask, jsonify
 from flask_cors import CORS
-from scapy.all import IP, TCP, UDP, ICMP, sniff
+from scapy.all import sniff, IP, TCP, UDP, ICMP
+from datetime import datetime
+import threading
+import time
 
 app = Flask(__name__)
-CORS(app)  # Enables React to communicate with this backend
+CORS(app)
 
-# In-memory storage for alerts and traffic stats
+# In-memory store for recent alerts
 alerts_log = []
-traffic_log = defaultdict(lambda: [0, time.time()])
+packet_counts = {}
 
-# Threshold settings
-PACKET_LIMIT = 30
-TIME_WINDOW = 5
-
-
-def packet_callback(packet):
-  if packet.haslayer(IP):
-    ip_layer = packet.getlayer(IP)
-    src_ip = ip_layer.src
-    dst_ip = ip_layer.dst
-
-    current_time = time.time()
-    count, start_time = traffic_log[src_ip]
-
-    if current_time - start_time > TIME_WINDOW:
-      traffic_log[src_ip] = [1, current_time]
-    else:
-      traffic_log[src_ip][0] += 1
-      if traffic_log[src_ip][0] > PACKET_LIMIT:
-        packet_count = traffic_log[src_ip][0]
-
+def analyze_packet(packet):
+    if packet.haslayer(IP):
+        src_ip = packet[IP].src
+        dst_ip = packet[IP].dst
+        current_time = time.time()
+        
+        # Track packet count per source IP in a 5-second window
+        key = src_ip
+        if key not in packet_counts:
+            packet_counts[key] = {'count': 0, 'start_time': current_time}
+        
+        # Reset window every 5 seconds
+        if current_time - packet_counts[key]['start_time'] > 5:
+            packet_counts[key] = {'count': 1, 'start_time': current_time}
+        else:
+            packet_counts[key]['count'] += 1
+            
+        packet_count = packet_counts[key]['count']
+        
+        # Protocol & Port Signature Analysis
         proto_name = "OTHER"
         threat_type = "Traffic Surge"
-
+        
         if packet.haslayer(TCP):
-          proto_name = "TCP"
-          sport = packet[TCP].sport
-          dport = packet[TCP].dport
-
-          if dport == 22 or sport == 22:
-            threat_type = "SSH Brute-Force Signature"
-          elif dport in (80, 443) or sport in (80, 443):
-            threat_type = "Web Service Spike"
-          else:
-            threat_type = "TCP Flood / Connection Surge"
-
+            proto_name = "TCP"
+            sport = packet[TCP].sport
+            dport = packet[TCP].dport
+            if dport == 22 or sport == 22:
+                threat_type = "SSH Brute-Force Signature"
+            elif dport == 80 or dport == 443:
+                threat_type = "Web Service Spike"
+            else:
+                threat_type = "TCP Flood / Connection Surge"
         elif packet.haslayer(UDP):
-          proto_name = "UDP"
-          threat_type = "UDP Volumetric Activity"
-
+            proto_name = "UDP"
+            threat_type = "UDP Volumetric Activity"
         elif packet.haslayer(ICMP):
-          proto_name = "ICMP"
-          threat_type = "Ping Sweep / Network Scan"
+            proto_name = "ICMP"
+            threat_type = "Ping Sweep / Network Scan"
 
+        # Tiered Severity Logic based on packet volume
         if packet_count > 70:
-          severity = "CRITICAL"
-          message = f"Critical {threat_type} detected ({packet_count} packets in {TIME_WINDOW}s)"
+            severity = "CRITICAL"
         elif packet_count > 45:
-          severity = "HIGH"
-          message = f"High {threat_type} detected ({packet_count} packets in {TIME_WINDOW}s)"
+            severity = "HIGH"
+        elif packet_count > 30:
+            severity = "MEDIUM"
         else:
-          severity = "MEDIUM"
-          message = f"Moderate {threat_type} detected ({packet_count} packets in {TIME_WINDOW}s)"
+            return # Ignore minor background traffic below threshold
 
-        alert_msg = {
+        # Build alert object
+        alert = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "source": src_ip,
             "destination": dst_ip,
             "count": packet_count,
             "protocol": proto_name,
             "threatType": threat_type,
-            "message": message,
-            "severity": severity,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "message": f"{threat_type} detected ({packet_count} pkts)",
+            "severity": severity
         }
-        # Avoid duplicating identical rapid alerts
-        if not alerts_log or alerts_log[-1]["source"] != src_ip:
-          alerts_log.append(alert_msg)
-          print(f"[!] ALERT LOGGED: {src_ip} ({severity}) - {threat_type}")
+        
+        # Avoid duplicate spam within the same window
+        if not any(a['source'] == src_ip and a['severity'] == severity and abs(time.time() - datetime.strptime(a['timestamp'], "%Y-%m-%d %H:%M:%S").timestamp()) < 5 for a in alerts_log):
+            alerts_log.insert(0, alert)
+            # Keep only the last 100 alerts
+            if len(alerts_log) > 100:
+                alerts_log.pop()
 
+def background_sniffer():
+    # Sniff network packets (store=False to save memory)
+    sniff(prn=analyze_packet, store=False)
 
-def start_sniffer():
-  print("Starting background packet capture & anomaly detection...")
-  sniff(prn=packet_callback, store=False)
-
-
-# API Endpoint to fetch alerts for the React frontend
-@app.route("/api/alerts", methods=["GET"])
+@app.route('/api/alerts', methods=['GET'])
 def get_alerts():
-  return jsonify(alerts_log)
+    return jsonify(alerts_log)
 
-
-if __name__ == "__main__":
-  # Run the packet sniffer in a separate background thread so it doesn't block Flask
-  sniffer_thread = threading.Thread(target=start_sniffer, daemon=True)
-  sniffer_thread.start()
-
-  # Start the Flask web server
-  app.run(debug=True, port=5000, use_reloader=False)
+if __name__ == '__main__':
+    # Start packet sniffer in a background thread
+    t = threading.Thread(target=background_sniffer, daemon=True)
+    t.start()
+    app.run(host='0.0.0.0', port=5000, debug=False)

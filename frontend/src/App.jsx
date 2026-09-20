@@ -5,6 +5,7 @@ function App() {
   const [alerts, setAlerts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isPaused, setIsPaused] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState(null);
 
   // Fetch alerts from Flask backend every 2 seconds (unless paused)
   useEffect(() => {
@@ -33,10 +34,11 @@ function App() {
     downloadAnchor.remove();
   };
 
-  // Filter alerts based on search term (Source IP or Severity)
+  // Filter alerts based on search term (Source IP, Threat Type, or Severity)
   const filteredAlerts = alerts.filter(alert => 
     alert.source.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    alert.severity.toLowerCase().includes(searchTerm.toLowerCase())
+    alert.severity.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    alert.threatType.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Calculate KPI metrics
@@ -81,7 +83,7 @@ function App() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '10px', flexWrap: 'wrap' }}>
           <input 
             type="text" 
-            placeholder="🔍 Filter by Source IP or Severity..." 
+            placeholder="🔍 Filter by IP, Protocol, or Severity..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
@@ -154,38 +156,25 @@ function App() {
               const severityColor = 
                 alert.severity === 'CRITICAL' ? '#dc2626' : 
                 alert.severity === 'HIGH' ? '#f97316' : '#eab308';
-              const protocolLabel = alert.protocol || 'IP';
 
               return (
-                <div key={index} style={{
+                <div key={index} onClick={() => setSelectedAlert(alert)} style={{
                   backgroundColor: '#1e293b',
                   borderLeft: `5px solid ${severityColor}`,
                   padding: '15px',
                   borderRadius: '6px',
+                  cursor: 'pointer',
                   boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>{alert.timestamp}</span>
+                    
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <span style={{ 
-                        fontSize: '11px', 
-                        fontWeight: 'bold', 
-                        backgroundColor: '#334155', 
-                        color: '#38bdf8', 
-                        padding: '2px 8px', 
-                        borderRadius: '4px' 
-                      }}>
-                        {protocolLabel}
+                      <span style={{ fontSize: '11px', fontWeight: 'bold', backgroundColor: '#334155', color: '#38bdf8', padding: '2px 8px', borderRadius: '4px' }}>
+                        {alert.protocol || 'IP'}
                       </span>
-                      <span style={{ 
-                        fontSize: '11px', 
-                        fontWeight: 'bold', 
-                        backgroundColor: severityColor, 
-                        color: '#fff', 
-                        padding: '2px 8px', 
-                        borderRadius: '4px' 
-                      }}>
-                        {alert.severity || 'WARNING'}
+                      <span style={{ fontSize: '11px', fontWeight: 'bold', backgroundColor: severityColor, color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>
+                        {alert.severity}
                       </span>
                     </div>
                   </div>
@@ -199,6 +188,35 @@ function App() {
             })
           )}
         </div>
+
+        {/* Packet Forensics Modal */}
+        {selectedAlert && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+          }}>
+            <div style={{ backgroundColor: '#1e293b', padding: '25px', borderRadius: '8px', width: '500px', border: '1px solid #334155' }}>
+              <h2 style={{ color: '#38bdf8', marginTop: 0 }}>🔬 Packet Forensics Details</h2>
+              <p><strong>Timestamp:</strong> {selectedAlert.timestamp}</p>
+              <p><strong>Source IP:</strong> {selectedAlert.source}</p>
+              <p><strong>Destination IP:</strong> {selectedAlert.destination}</p>
+              <p><strong>Protocol Layer:</strong> {selectedAlert.protocol}</p>
+              <p><strong>Threat Signature:</strong> {selectedAlert.threatType}</p>
+              <p><strong>Severity Vector:</strong> {selectedAlert.severity}</p>
+              <p><strong>Packet Volume:</strong> {selectedAlert.count} packets / 5s window</p>
+              
+              <button 
+                onClick={() => setSelectedAlert(null)}
+                style={{
+                  backgroundColor: '#dc2626', color: '#fff', border: 'none',
+                  padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '15px'
+                }}
+              >
+                Close Forensics Panel
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
