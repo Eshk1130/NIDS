@@ -3,7 +3,7 @@ import threading
 import time
 from flask import Flask, jsonify
 from flask_cors import CORS
-from scapy.all import IP, sniff
+from scapy.all import IP, TCP, UDP, ICMP, sniff
 
 app = Flask(__name__)
 CORS(app)  # Enables React to communicate with this backend
@@ -33,20 +33,45 @@ def packet_callback(packet):
       if traffic_log[src_ip][0] > PACKET_LIMIT:
         packet_count = traffic_log[src_ip][0]
 
+        proto_name = "OTHER"
+        threat_type = "Traffic Surge"
+
+        if packet.haslayer(TCP):
+          proto_name = "TCP"
+          sport = packet[TCP].sport
+          dport = packet[TCP].dport
+
+          if dport == 22 or sport == 22:
+            threat_type = "SSH Brute-Force Signature"
+          elif dport in (80, 443) or sport in (80, 443):
+            threat_type = "Web Service Spike"
+          else:
+            threat_type = "TCP Flood / Connection Surge"
+
+        elif packet.haslayer(UDP):
+          proto_name = "UDP"
+          threat_type = "UDP Volumetric Activity"
+
+        elif packet.haslayer(ICMP):
+          proto_name = "ICMP"
+          threat_type = "Ping Sweep / Network Scan"
+
         if packet_count > 70:
           severity = "CRITICAL"
-          message = f"Critical traffic spike detected ({packet_count} packets in {TIME_WINDOW}s)"
+          message = f"Critical {threat_type} detected ({packet_count} packets in {TIME_WINDOW}s)"
         elif packet_count > 45:
           severity = "HIGH"
-          message = f"High traffic volume detected ({packet_count} packets in {TIME_WINDOW}s)"
+          message = f"High {threat_type} detected ({packet_count} packets in {TIME_WINDOW}s)"
         else:
           severity = "MEDIUM"
-          message = f"Moderate traffic surge detected ({packet_count} packets in {TIME_WINDOW}s)"
+          message = f"Moderate {threat_type} detected ({packet_count} packets in {TIME_WINDOW}s)"
 
         alert_msg = {
             "source": src_ip,
             "destination": dst_ip,
             "count": packet_count,
+            "protocol": proto_name,
+            "threatType": threat_type,
             "message": message,
             "severity": severity,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -54,7 +79,7 @@ def packet_callback(packet):
         # Avoid duplicating identical rapid alerts
         if not alerts_log or alerts_log[-1]["source"] != src_ip:
           alerts_log.append(alert_msg)
-          print(f"[!] ALERT LOGGED: {src_ip} ({severity})")
+          print(f"[!] ALERT LOGGED: {src_ip} ({severity}) - {threat_type}")
 
 
 def start_sniffer():

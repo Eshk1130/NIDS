@@ -154,6 +154,7 @@ function App() {
               const severityColor = 
                 alert.severity === 'CRITICAL' ? '#dc2626' : 
                 alert.severity === 'HIGH' ? '#f97316' : '#eab308';
+              const protocolLabel = alert.protocol || 'IP';
 
               return (
                 <div key={index} style={{
@@ -165,16 +166,28 @@ function App() {
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>{alert.timestamp}</span>
-                    <span style={{ 
-                      fontSize: '11px', 
-                      fontWeight: 'bold', 
-                      backgroundColor: severityColor, 
-                      color: '#fff', 
-                      padding: '2px 8px', 
-                      borderRadius: '4px' 
-                    }}>
-                      {alert.severity || 'WARNING'}
-                    </span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        fontWeight: 'bold', 
+                        backgroundColor: '#334155', 
+                        color: '#38bdf8', 
+                        padding: '2px 8px', 
+                        borderRadius: '4px' 
+                      }}>
+                        {protocolLabel}
+                      </span>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        fontWeight: 'bold', 
+                        backgroundColor: severityColor, 
+                        color: '#fff', 
+                        padding: '2px 8px', 
+                        borderRadius: '4px' 
+                      }}>
+                        {alert.severity || 'WARNING'}
+                      </span>
+                    </div>
                   </div>
 
                   <h3 style={{ margin: '8px 0 5px 0', color: severityColor }}>{alert.message}</h3>
